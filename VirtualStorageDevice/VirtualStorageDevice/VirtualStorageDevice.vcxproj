@@ -164,7 +164,7 @@
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
     </ClCompile>
     <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)$(ConfigurationName)\$(SolutionName).sys \\target\Drivers\$(SolutionName)\$(SolutionName).sys /Y
+      <Command>xcopy $(SolutionDir)$(ConfigurationName)\$(TargetName).sys \\target\Drivers\$(SolutionName)\$(TargetName).sys /Y
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -187,10 +187,14 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="DriverFunctions.cpp" />
     <ClCompile Include="Main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
+    <ClInclude Include="DriverFunctions.h" />
+    <ClInclude Include="IoctlCodes.h" />
+    <ClInclude Include="IoctlFunctions.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

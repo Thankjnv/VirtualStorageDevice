@@ -5,6 +5,8 @@ VisualStudioVersion = 16.0.29905.134
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VirtualStorageDevice", "VirtualStorageDevice\VirtualStorageDevice.vcxproj", "{95340F20-048A-4243-A03F-689C73297F35}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Client", "Client\Client.vcxproj", "{7792C761-9486-4D98-8BD8-BD3940928499}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -27,6 +29,18 @@ Global
 		{95340F20-048A-4243-A03F-689C73297F35}.Release|ARM64.ActiveCfg = Debug|Win32
 		{95340F20-048A-4243-A03F-689C73297F35}.Release|x64.ActiveCfg = Debug|Win32
 		{95340F20-048A-4243-A03F-689C73297F35}.Release|x86.ActiveCfg = Debug|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|ARM.ActiveCfg = Debug|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|ARM64.ActiveCfg = Debug|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|x64.ActiveCfg = Debug|x64
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|x64.Build.0 = Debug|x64
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|x86.ActiveCfg = Debug|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Debug|x86.Build.0 = Debug|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|ARM.ActiveCfg = Release|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|ARM64.ActiveCfg = Release|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|x64.ActiveCfg = Release|x64
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|x64.Build.0 = Release|x64
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|x86.ActiveCfg = Release|Win32
+		{7792C761-9486-4D98-8BD8-BD3940928499}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
