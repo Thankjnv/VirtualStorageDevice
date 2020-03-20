@@ -1,10 +1,12 @@
-#include "Common.h"
-#include "../VirtualStorageDevice/IoctlCodes.h"
+#include "Utils.h"
+#include "../VirtualStorageDevice/Common.h"
 #include <string>
 #include <iostream>
+#include <vector>
 
 using std::string;
 using std::wstring;
+using std::vector;
 using std::cerr;
 using std::cout;
 using std::endl;
@@ -19,15 +21,19 @@ int wmain() {
 		return 1;
 	}
 
-	string buffer = "Some data";
+	wstring path = L"\\Device\\HarddiskVolume1\\Temp\\a.txt";
+	auto size = (path.size() * sizeof(path[0]));
+	vector<byte> buffer(sizeof(IoctlCreateVirtualStorageParameter) + size, 0);
+	auto parameter = reinterpret_cast<IoctlCreateVirtualStorageParameter*>(buffer.data());
+	parameter->size = size;
+	memcpy_s(parameter->path, size, path.c_str(), size);
 	DWORD bytesReturned = 0;
-	if (!DeviceIoControl(device, IOCTL_TEST_CODE, const_cast<char*>(buffer.c_str()), buffer.size(), nullptr, 0,
+	if (!DeviceIoControl(device, IOCTL_CREATE_VIRTUAL_STORAGE_CODE, buffer.data(), buffer.size(), nullptr, 0,
 						 &bytesReturned, nullptr)) {
 		auto gle = GetLastError();
 		cerr << "DeviceIoControl failed, GLE=" << gle << endl;
 	}
 	cout << "Closing device" << endl;
 	CloseHandle(device);
-	
 	return 0;
 }

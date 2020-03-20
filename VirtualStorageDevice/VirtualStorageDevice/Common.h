@@ -1,28 +1,15 @@
 #pragma once
-#include <ntddk.h>
+// This file contains constants and data structures that are shared between the user and kernel side
 
-#define TRACE(format, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, static_cast<ULONG>(-1), "[" __FUNCTION__ ":%d]  " format "\n", __LINE__, __VA_ARGS__)
+// Before including this file you must first include "Windows.h" for user side or "ntddk.h" for kernel side
 
-#define CHECK_AND_SET_STATUS(expr, newStatus, failureMessage) \
-	if (!(expr)) { \
-		TRACE("%s", failureMessage); \
-		status = newStatus; \
-		goto cleanup; \
-	}
+#define MY_VENDOR_CODE 0x8000
+#define IOCTL_CREATE_VIRTUAL_STORAGE_CODE CTL_CODE(MY_VENDOR_CODE, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-// Set status to itself so it isn't changed
-#define CHECK(expr, failureMessage) \
-	CHECK_AND_SET_STATUS(expr, status, failureMessage);
-
-#define CHECK_STATUS(expr, failureMessage) \
-	status = (expr); \
-	if (!NT_SUCCESS(status)) { \
-		TRACE("%s. status=%lx", failureMessage, status); \
-		goto cleanup; \
-	}
-
-#define FREE_IF_NOT_NULL(ptr, tag) \
-	if (ptr) { \
-		ExFreePoolWithTag(ptr, tag); \
-		ptr = nullptr; \
-	}
+#pragma warning(push)
+#pragma warning(disable: 4200)
+struct IoctlCreateVirtualStorageParameter {
+	USHORT size;
+	WCHAR path[0];
+};
+#pragma warning(pop)

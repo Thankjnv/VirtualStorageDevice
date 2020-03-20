@@ -188,13 +188,23 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DriverFunctions.cpp" />
+    <ClCompile Include="ManagerIoctlFunctions.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="ManagerFunctions.cpp" />
+    <ClCompile Include="UtilFunctions.cpp" />
+    <ClCompile Include="VirtualStorageFunctions.cpp" />
+    <ClCompile Include="VirtualStorageIoctlFunctions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
+    <ClInclude Include="ExportedFunctions.h" />
+    <ClInclude Include="ManagerFunctions.h" />
+    <ClInclude Include="UtilFunctions.h" />
+    <ClInclude Include="Utils.h" />
     <ClInclude Include="DriverFunctions.h" />
-    <ClInclude Include="IoctlCodes.h" />
-    <ClInclude Include="IoctlFunctions.h" />
+    <ClInclude Include="ManagerIoctlFunctions.h" />
+    <ClInclude Include="VirtualStorageFunctions.h" />
+    <ClInclude Include="VirtualStorageIoctlFunctions.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
