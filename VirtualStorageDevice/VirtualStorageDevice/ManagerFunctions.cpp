@@ -7,7 +7,7 @@ namespace manager {
 NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION stackLocation = IoGetCurrentIrpStackLocation(irp);
-	auto ioctlCode = stackLocation->Parameters.DeviceIoControl.IoControlCode;
+	const auto ioctlCode = stackLocation->Parameters.DeviceIoControl.IoControlCode;
 	TRACE("Ioctl dispatch called, ioctl code=%lx", ioctlCode);
 	// Each ioctl dispatcher should set irp->IoStatus
 	switch (ioctlCode) {
@@ -16,6 +16,7 @@ NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 		break;
 	default:
 		TRACE("Unknown Ioctl code");
+		__debugbreak();
 		status = STATUS_NOT_IMPLEMENTED;
 		irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
 		irp->IoStatus.Information = 0;

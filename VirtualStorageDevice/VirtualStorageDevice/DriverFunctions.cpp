@@ -9,11 +9,43 @@ NTSTATUS unimplementedMajorFunction(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	char* deviceTypeName = reinterpret_cast<char*>("Unknown");
 	CHECK_STATUS(getDeviceTypeName(deviceObject, &deviceTypeName), "getDeviceTypeName failed");
 cleanup:
-	TRACE("%s: Unimplemented major function called. Major=%lu, Minor=%lu", deviceTypeName, stackLocation->MajorFunction, stackLocation->MinorFunction);
+	TRACE("%s: Unimplemented major function called. Major=%lx, Minor=%lx", deviceTypeName, stackLocation->MajorFunction, stackLocation->MinorFunction);
+	__debugbreak();
 	irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
 	irp->IoStatus.Information = 0;
 	IoCompleteRequest(irp, IO_NO_INCREMENT);
 	return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS deviceDispatchPnp(PDEVICE_OBJECT deviceObject, PIRP irp) {
+	NTSTATUS status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION stackLocation = IoGetCurrentIrpStackLocation(irp);
+	bool requestHandled = false;
+	const auto deviceExtensionHeader = reinterpret_cast<PDeviceExtensionHeader>(deviceObject->DeviceExtension);
+	char* deviceTypeName = reinterpret_cast<char*>("Unknown");
+	CHECK_STATUS(getDeviceTypeName(deviceObject, &deviceTypeName), "getDeviceTypeName failed");
+	TRACE("%s: PNP - Minor = %lx", deviceTypeName, stackLocation->MinorFunction);
+	requestHandled = true;
+	switch (deviceExtensionHeader->type) {
+	case DeviceType::MANAGER:
+		status = unimplementedMajorFunction(deviceObject, irp);
+		break;
+	case DeviceType::VIRTUAL_STORAGE:
+		status = virtualStorage::deviceDispatchPnp(deviceObject, irp);
+		break;
+	default:
+		TRACE("ERROR: Unreachable code reached");
+		requestHandled = false;
+		break;
+	}
+cleanup:
+	if (!requestHandled) {
+		TRACE("Request wasn't passed to device handler");
+		irp->IoStatus.Status = status;
+		irp->IoStatus.Information = 0;
+		IoCompleteRequest(irp, IO_NO_INCREMENT);
+	}
+	return status;
 }
 
 NTSTATUS deviceDispatchCreate(PDEVICE_OBJECT deviceObject, PIRP irp) {
@@ -55,9 +87,9 @@ cleanup:
 NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	NTSTATUS status = STATUS_SUCCESS;
 	bool requestHandled = false;
-	auto deviceExtensionHeader = reinterpret_cast<DeviceExtensionHeader*>(deviceObject->DeviceExtension);
-	CHECK_AND_SET_STATUS(deviceExtensionHeader, STATUS_BAD_DATA, "Device has no device extension");
-	CHECK_AND_SET_STATUS(deviceExtensionHeader->type < DeviceType::MAX_DEVICE_TYPE, STATUS_BAD_DATA, "Device type out of range");
+	const auto deviceExtensionHeader = reinterpret_cast<PDeviceExtensionHeader>(deviceObject->DeviceExtension);
+	CHECK_STATUS(verifyDeviceExtensionHeader(deviceObject), "verifyDeviceExtensionHeader failed");
+	requestHandled = true;
 	switch (deviceExtensionHeader->type) {
 	case DeviceType::MANAGER:
 		status = manager::deviceDispatchIoctl(deviceObject, irp);
@@ -67,9 +99,9 @@ NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 		break;
 	default:
 		TRACE("ERROR: Unreachable code reached");
+		requestHandled = false;
 		break;
 	}
-	requestHandled = true;
 cleanup:
 	if (!requestHandled) {
 		TRACE("Request wasn't passed to device handler");
@@ -83,10 +115,10 @@ cleanup:
 NTSTATUS deviceDispatchRead(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	NTSTATUS status = STATUS_SUCCESS;
 	bool requestHandled = false;
-	auto deviceExtensionHeader = reinterpret_cast<DeviceExtensionHeader*>(deviceObject->DeviceExtension);
+	const auto deviceExtensionHeader = reinterpret_cast<PDeviceExtensionHeader>(deviceObject->DeviceExtension);
 	TRACE("Read dispatch called");
-	CHECK_AND_SET_STATUS(deviceExtensionHeader, STATUS_BAD_DATA, "Device has no device extension");
-	CHECK_AND_SET_STATUS(deviceExtensionHeader->type < DeviceType::MAX_DEVICE_TYPE, STATUS_BAD_DATA, "Device type out of range");
+	CHECK_STATUS(verifyDeviceExtensionHeader(deviceObject), "verifyDeviceExtensionHeader failed");
+	requestHandled = true;
 	switch (deviceExtensionHeader->type) {
 	case DeviceType::MANAGER:
 		status = unimplementedMajorFunction(deviceObject, irp);
@@ -96,9 +128,9 @@ NTSTATUS deviceDispatchRead(PDEVICE_OBJECT deviceObject, PIRP irp) {
 		break;
 	default:
 		TRACE("ERROR: Unreachable code reached");
+		requestHandled = false;
 		break;
 	}
-	requestHandled = true;
 cleanup:
 	if (!requestHandled) {
 		TRACE("Request wasn't passed to device handler");
@@ -112,10 +144,10 @@ cleanup:
 NTSTATUS deviceDispatchWrite(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	NTSTATUS status = STATUS_SUCCESS;
 	bool requestHandled = false;
-	auto deviceExtensionHeader = reinterpret_cast<DeviceExtensionHeader*>(deviceObject->DeviceExtension);
+	const auto deviceExtensionHeader = reinterpret_cast<PDeviceExtensionHeader>(deviceObject->DeviceExtension);
 	TRACE("Write dispatch called");
-	CHECK_AND_SET_STATUS(deviceExtensionHeader, STATUS_BAD_DATA, "Device has no device extension");
-	CHECK_AND_SET_STATUS(deviceExtensionHeader->type < DeviceType::MAX_DEVICE_TYPE, STATUS_BAD_DATA, "Device type out of range");
+	CHECK_STATUS(verifyDeviceExtensionHeader(deviceObject), "verifyDeviceExtensionHeader failed");
+	requestHandled = true;
 	switch (deviceExtensionHeader->type) {
 	case DeviceType::MANAGER:
 		status = unimplementedMajorFunction(deviceObject, irp);
@@ -125,9 +157,9 @@ NTSTATUS deviceDispatchWrite(PDEVICE_OBJECT deviceObject, PIRP irp) {
 		break;
 	default:
 		TRACE("ERROR: Unreachable code reached");
+		requestHandled = false;
 		break;
 	}
-	requestHandled = true;
 cleanup:
 	if (!requestHandled) {
 		TRACE("Request wasn't passed to device handler");
@@ -135,5 +167,16 @@ cleanup:
 		irp->IoStatus.Information = 0;
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
+	return status;
+}
+
+NTSTATUS virtualStorageAddDevice(PDRIVER_OBJECT driverObject, PDEVICE_OBJECT physicalDeviceObject) {
+	UNREFERENCED_PARAMETER(driverObject);
+	NTSTATUS status = STATUS_SUCCESS;
+	char* deviceTypeName = reinterpret_cast<char*>("Unknown");
+	CHECK_STATUS(getDeviceTypeName(physicalDeviceObject, &deviceTypeName), "getDeviceTypeName failed");
+cleanup:
+	TRACE("AddDevice callback called for %s", deviceTypeName);
+	__debugbreak();
 	return status;
 }

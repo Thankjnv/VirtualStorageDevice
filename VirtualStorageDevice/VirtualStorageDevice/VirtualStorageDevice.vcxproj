@@ -167,6 +167,9 @@
       <Command>xcopy $(SolutionDir)$(ConfigurationName)\$(TargetName).sys \\target\Drivers\$(SolutionName)\$(TargetName).sys /Y
 </Command>
     </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)Wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -192,8 +195,10 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ManagerFunctions.cpp" />
     <ClCompile Include="UtilFunctions.cpp" />
+    <ClCompile Include="Utils.cpp" />
     <ClCompile Include="VirtualStorageFunctions.cpp" />
     <ClCompile Include="VirtualStorageIoctlFunctions.cpp" />
+    <ClCompile Include="VirtualStoragePnpFunctions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
@@ -205,6 +210,7 @@
     <ClInclude Include="ManagerIoctlFunctions.h" />
     <ClInclude Include="VirtualStorageFunctions.h" />
     <ClInclude Include="VirtualStorageIoctlFunctions.h" />
+    <ClInclude Include="VirtualStoragePnpFunctions.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

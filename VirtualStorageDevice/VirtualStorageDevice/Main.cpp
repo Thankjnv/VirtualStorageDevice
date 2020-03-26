@@ -1,8 +1,10 @@
 #include "Utils.h"
 #include "DriverFunctions.h"
+
 #define DRIVER_NAME L"VirtualStorageDevice"
-#define DEVICE_NAME L"\\Device\\" DRIVER_NAME
-#define LINK_NAME L"\\DosDevices\\" DRIVER_NAME
+#define MANAGER_DEVICE_NAME L"VirtualStorageDeviceManager"
+#define DEVICE_NAME L"\\Device\\" MANAGER_DEVICE_NAME
+#define LINK_NAME L"\\DosDevices\\" MANAGER_DEVICE_NAME
 
 void driverCleanup(PDRIVER_OBJECT driverObject) {
 	NTSTATUS status = STATUS_SUCCESS;
@@ -17,14 +19,27 @@ void driverCleanup(PDRIVER_OBJECT driverObject) {
 
 	while (currDevice) {
 		nextDevice = currDevice->NextDevice;
-		if ((reinterpret_cast<DeviceExtensionHeader*>(currDevice->DeviceExtension)->type) == DeviceType::VIRTUAL_STORAGE) {
-			const auto virtualStorageExtension = reinterpret_cast<VirtualStorageDeviceExtension*>(currDevice->DeviceExtension);
+		if ((reinterpret_cast<PDeviceExtensionHeader>(currDevice->DeviceExtension)->type) == DeviceType::VIRTUAL_STORAGE) {
+			TRACE("Deleting virtual storage device");
+			const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(currDevice->DeviceExtension);
 			TRACE("Closing virtual storage's file");
-			status = ZwClose(virtualStorageExtension->fileHandle);
+			status = ZwClose(virtualStorageExtension->file.handle);
 			if (!NT_SUCCESS(status)) {
 				TRACE("ZwClose failed. status=%lx", status);
 			}
-			virtualStorageExtension->fileHandle = nullptr;
+			virtualStorageExtension->file.handle = nullptr;
+			DELETE_IF_NOT_NULL(virtualStorageExtension->lowerLevelDevice, IoDetachDevice);
+			if (virtualStorageExtension->symbolicLinkName.Buffer) {
+				IoSetDeviceInterfaceState(&virtualStorageExtension->symbolicLinkName, false);
+				TRACE("Deleting PDO symbolic link name");
+				RtlFreeUnicodeString(&virtualStorageExtension->symbolicLinkName);
+				RtlZeroMemory(&virtualStorageExtension->symbolicLinkName, sizeof(UNICODE_STRING));
+			}
+			FREE_IF_NOT_NULL(virtualStorageExtension->deviceName.Buffer, 'NveD');
+			TRACE("Deleting PDO");
+			DELETE_IF_NOT_NULL(virtualStorageExtension->pdoDevice, IoDeleteDevice);
+		} else {
+			TRACE("Deleting manager");
 		}
 		TRACE("Deleting device");
 		IoDeleteDevice(currDevice);
@@ -43,14 +58,10 @@ EXTERN_C NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING regis
 	UNICODE_STRING deviceName = RTL_CONSTANT_STRING(DEVICE_NAME);
 	UNICODE_STRING linkName = RTL_CONSTANT_STRING(LINK_NAME);
 	PDEVICE_OBJECT device = nullptr;
-	driverObject->DriverUnload = driverUnload;
+	PManagerDeviceExtension deviceExtension = nullptr;
 	TRACE("%ls entry called", DRIVER_NAME);
-	TRACE("Creating manager device");
-	CHECK_STATUS(IoCreateDevice(driverObject, sizeof(ManagerDeviceExtension), &deviceName, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, false, &device), "IoCreateDevice failed");
-	reinterpret_cast<ManagerDeviceExtension*>(device->DeviceExtension)->header.type = DeviceType::MANAGER;
-	TRACE("Creating symbolic link");
-	CHECK_STATUS(IoCreateSymbolicLink(&linkName, &deviceName), "IoCreateSymbolicLink failed");
-
+	driverObject->DriverUnload = driverUnload;
+	driverObject->DriverExtension->AddDevice = virtualStorageAddDevice;
 	for (int i = 0; i < IRP_MJ_MAXIMUM_FUNCTION; ++i) {
 		driverObject->MajorFunction[i] = unimplementedMajorFunction;
 	}
@@ -61,9 +72,18 @@ EXTERN_C NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING regis
 	driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = deviceDispatchIoctl;
 	driverObject->MajorFunction[IRP_MJ_READ] = deviceDispatchRead;
 	driverObject->MajorFunction[IRP_MJ_WRITE] = deviceDispatchWrite;
+	driverObject->MajorFunction[IRP_MJ_PNP] = deviceDispatchPnp;
+	
+	TRACE("Creating manager device");
+	CHECK_STATUS(IoCreateDevice(driverObject, sizeof(ManagerDeviceExtension), &deviceName, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN | FILE_CHARACTERISTIC_PNP_DEVICE, false, &device), "IoCreateDevice failed");
+	deviceExtension = reinterpret_cast<PManagerDeviceExtension>(device->DeviceExtension);
+	deviceExtension->header.magic = DEVICE_EXTENSION_HEADER_MAGIC;
+	deviceExtension->header.type = DeviceType::MANAGER;
+	TRACE("Creating symbolic link at %wZ", &linkName);
+	CHECK_STATUS(IoCreateSymbolicLink(&linkName, &deviceName), "IoCreateSymbolicLink failed");
+
 	device->Flags |= DO_BUFFERED_IO;
 	device->Flags &= ~DO_DEVICE_INITIALIZING;
-	
 cleanup:
 	if (!NT_SUCCESS(status)) {
 		driverCleanup(driverObject);
