@@ -1,6 +1,7 @@
 #include "ManagerIoctlFunctions.h"
 #include "Common.h"
 #include "UtilFunctions.h"
+#include "ntddstor.h"
 
 namespace manager {
 
@@ -75,8 +76,12 @@ NTSTATUS ioctlDispatchCreateVirtualStorage(PDEVICE_OBJECT deviceObject, PIRP irp
 	}
 	
 	deviceExtension->lowerLevelDevice = IoAttachDeviceToDeviceStack(fdoDevice, deviceExtension->pdoDevice);
-	CHECK_STATUS(IoRegisterDeviceInterface(deviceExtension->pdoDevice, &MOUNTDEV_MOUNTED_DEVICE_GUID, nullptr, &deviceExtension->symbolicLinkName), "IoRegisterDeviceInterface failed");
-	CHECK_STATUS(IoSetDeviceInterfaceState(&deviceExtension->symbolicLinkName, true), "IoSetDeviceInterfaceState failed");
+	CHECK_STATUS(IoRegisterDeviceInterface(deviceExtension->pdoDevice, &GUID_DEVINTERFACE_DISK, nullptr, &deviceExtension->diskSymbolicLinkName), "IoRegisterDeviceInterface failed");
+	CHECK_STATUS(IoSetDeviceInterfaceState(&deviceExtension->diskSymbolicLinkName, true), "IoSetDeviceInterfaceState failed");
+
+	CHECK_STATUS(IoRegisterDeviceInterface(deviceExtension->pdoDevice, &MOUNTDEV_MOUNTED_DEVICE_GUID, nullptr, &deviceExtension->mountSymbolicLinkName), "IoRegisterDeviceInterface failed");
+	CHECK_STATUS(IoSetDeviceInterfaceState(&deviceExtension->mountSymbolicLinkName, true), "IoSetDeviceInterfaceState failed");
+	
 	CHECK_STATUS(IoVerifyVolume(fdoDevice, true), "IoVerifyVolume failed");
 cleanup:
 	DELETE_IF_NOT_NULL_MACRO(fileObject, ObDereferenceObject);
@@ -84,10 +89,15 @@ cleanup:
 	if (!NT_SUCCESS(status)) {
 		if (deviceExtension) {
 			DELETE_IF_NOT_NULL(deviceExtension->lowerLevelDevice, IoDetachDevice);
-			if (deviceExtension->symbolicLinkName.Buffer) {
-				IoSetDeviceInterfaceState(&deviceExtension->symbolicLinkName, false);
-				RtlFreeUnicodeString(&deviceExtension->symbolicLinkName);
-				RtlZeroMemory(&deviceExtension->symbolicLinkName, sizeof(UNICODE_STRING));
+			if (deviceExtension->mountSymbolicLinkName.Buffer) {
+				IoSetDeviceInterfaceState(&deviceExtension->mountSymbolicLinkName, false);
+				RtlFreeUnicodeString(&deviceExtension->mountSymbolicLinkName);
+				RtlZeroMemory(&deviceExtension->mountSymbolicLinkName, sizeof(UNICODE_STRING));
+			}
+			if (deviceExtension->diskSymbolicLinkName.Buffer) {
+				IoSetDeviceInterfaceState(&deviceExtension->diskSymbolicLinkName, false);
+				RtlFreeUnicodeString(&deviceExtension->diskSymbolicLinkName);
+				RtlZeroMemory(&deviceExtension->diskSymbolicLinkName, sizeof(UNICODE_STRING));
 			}
 		}
 		DELETE_IF_NOT_NULL(pdoDevice, IoDeleteDevice);

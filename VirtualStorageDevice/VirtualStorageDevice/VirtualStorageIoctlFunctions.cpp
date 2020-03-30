@@ -30,28 +30,51 @@ NTSTATUS ioctlDispatchGetDriveGeometry(PDEVICE_OBJECT deviceObject, PIRP irp, PI
 	NTSTATUS status = STATUS_SUCCESS;
 	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
 	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
-	DISK_GEOMETRY* outputInfo = nullptr;
+	PDISK_GEOMETRY outputInfo = nullptr;
 	ULONG_PTR dataWritten = 0;
 	LARGE_INTEGER deviceTracks;
 	LARGE_INTEGER deviceCylinders;	
 	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
 	TRACE("ioctlDispatchGetDriveGeometry called");
 	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(DISK_GEOMETRY)), "Buffer verification failed");
-	outputInfo = reinterpret_cast<DISK_GEOMETRY*>(outputBuffer);
-	deviceTracks.QuadPart = (virtualStorageExtension->file.size.QuadPart / BYTES_PER_SECTOR) / SECTORS_PER_TRACK;
-	deviceCylinders.QuadPart = deviceTracks.QuadPart / MAX_TRACK_PER_CYLINDER;
-	if (!deviceCylinders.QuadPart) {
-		deviceCylinders.QuadPart = 1;
-	}
-	if (!deviceTracks.QuadPart || deviceTracks.QuadPart > MAX_TRACK_PER_CYLINDER) {
-		deviceTracks.QuadPart = MAX_TRACK_PER_CYLINDER;
-	}
-	outputInfo->Cylinders.QuadPart = deviceCylinders.QuadPart;
+	outputInfo = reinterpret_cast<PDISK_GEOMETRY>(outputBuffer);
 	outputInfo->MediaType = RemovableMedia;
-	outputInfo->TracksPerCylinder = deviceTracks.LowPart;
-	outputInfo->SectorsPerTrack = SECTORS_PER_TRACK;
-	outputInfo->BytesPerSector = BYTES_PER_SECTOR;
+	FILL_DISK_PHYSICAL_INFO(*outputInfo, virtualStorageExtension->file.size);
 	dataWritten = sizeof(DISK_GEOMETRY);
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = dataWritten;
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctlDispatchGetDriveGeometryEx(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	UNREFERENCED_PARAMETER(deviceObject);
+	NTSTATUS status = STATUS_SUCCESS;
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PDISK_GEOMETRY_EX outputInfo = nullptr;
+	ULONG_PTR dataWritten = 0;
+	LARGE_INTEGER deviceTracks;
+	LARGE_INTEGER deviceCylinders;
+	PDISK_PARTITION_INFO diskPartitionInfo = nullptr;
+	PDISK_DETECTION_INFO diskDetectionInfo = nullptr;
+	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
+	TRACE("ioctlDispatchGetDriveGeometryEx called");
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(DISK_GEOMETRY) + sizeof(LARGE_INTEGER)), "Buffer verification failed");
+	outputInfo = reinterpret_cast<PDISK_GEOMETRY_EX>(outputBuffer);
+	FILL_DISK_PHYSICAL_INFO(outputInfo->Geometry, virtualStorageExtension->file.size);
+	outputInfo->DiskSize = virtualStorageExtension->file.size;
+	dataWritten = sizeof(DISK_GEOMETRY) + sizeof(LARGE_INTEGER);
+	CHECK_AND_SET_STATUS(length >= (sizeof(DISK_GEOMETRY) + sizeof(LARGE_INTEGER) + sizeof(DISK_PARTITION_INFO)), STATUS_BUFFER_TOO_SMALL, "Not adding disk partition info");
+	diskPartitionInfo = reinterpret_cast<PDISK_PARTITION_INFO>(outputInfo->Data);
+	diskPartitionInfo->SizeOfPartitionInfo = sizeof(DISK_PARTITION_INFO);
+	diskPartitionInfo->PartitionStyle = PARTITION_STYLE_RAW;
+	dataWritten += sizeof(DISK_PARTITION_INFO);
+	CHECK_AND_SET_STATUS(length >= (sizeof(DISK_GEOMETRY) + sizeof(LARGE_INTEGER) + sizeof(DISK_PARTITION_INFO) + sizeof(DISK_DETECTION_INFO)), STATUS_BUFFER_TOO_SMALL, "Not adding disk detection info");
+	diskDetectionInfo = reinterpret_cast<PDISK_DETECTION_INFO>(reinterpret_cast<char*>(outputInfo->Data) + sizeof(DISK_PARTITION_INFO));
+	diskDetectionInfo->SizeOfDetectInfo = 0;
+	diskDetectionInfo->DetectionType = DetectNone;
+	dataWritten += sizeof(DISK_DETECTION_INFO);
 cleanup:
 	irp->IoStatus.Status = status;
 	irp->IoStatus.Information = dataWritten;
@@ -221,7 +244,6 @@ cleanup:
 }
 
 NTSTATUS ioctlDispatchGetPartitionInfo(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
-	UNREFERENCED_PARAMETER(deviceObject);
 	NTSTATUS status = STATUS_SUCCESS;
 	TRACE("ioctlDispatchGetPartitionInfo called");
 	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
@@ -235,10 +257,167 @@ NTSTATUS ioctlDispatchGetPartitionInfo(PDEVICE_OBJECT deviceObject, PIRP irp, PI
 	output->PartitionStyle = PARTITION_STYLE_RAW;
 	output->StartingOffset.QuadPart = 0;
 	output->PartitionLength = virtualStorageExtension->file.size;
+	output->PartitionNumber = 0;
 	output->RewritePartition = false;
 #if (NTDDI_VERSION >= NTDDI_WIN10_RS3)  /* ABRACADABRA_WIN10_RS3 */
 	output->IsServicePartition = false;
 #endif
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchGetDriveLayout(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetDriveLayout called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PDRIVE_LAYOUT_INFORMATION output = nullptr;
+	ULONG_PTR bytesWritten = 0;
+	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(DRIVE_LAYOUT_INFORMATION)), "Buffer verification failed");
+	output = reinterpret_cast<PDRIVE_LAYOUT_INFORMATION>(outputBuffer);
+	bytesWritten = sizeof(DRIVE_LAYOUT_INFORMATION);
+	output->PartitionCount = 1;
+	output->Signature = 0;
+	output->PartitionEntry[0].StartingOffset.QuadPart = 0;
+	output->PartitionEntry[0].PartitionLength = virtualStorageExtension->file.size;
+	output->PartitionEntry[0].HiddenSectors = 0;
+	output->PartitionEntry[0].PartitionNumber = 0;
+	output->PartitionEntry[0].BootIndicator = false;
+	output->PartitionEntry[0].RecognizedPartition = true;
+	output->PartitionEntry[0].RewritePartition = false;
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchGetDriveLayoutEx(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetDriveLayoutEx called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PDRIVE_LAYOUT_INFORMATION_EX output = nullptr;
+	ULONG_PTR bytesWritten = 0;
+	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(DRIVE_LAYOUT_INFORMATION_EX)), "Buffer verification failed");
+	output = reinterpret_cast<PDRIVE_LAYOUT_INFORMATION_EX>(outputBuffer);
+	bytesWritten = sizeof(DRIVE_LAYOUT_INFORMATION_EX);
+	output->PartitionStyle = PARTITION_STYLE_RAW;
+	output->PartitionCount = 1;
+	output->PartitionEntry[0].PartitionStyle = PARTITION_STYLE_RAW;
+	output->PartitionEntry[0].StartingOffset.QuadPart = 0;
+	output->PartitionEntry[0].PartitionLength = virtualStorageExtension->file.size;
+	output->PartitionEntry[0].PartitionNumber = 0;
+	output->PartitionEntry[0].RewritePartition = false;
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS3)  /* ABRACADABRA_WIN10_RS3 */
+	output->IsServicePartition = false;
+#endif
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchGetDeviceNumber(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	// __debugbreak();
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetDeviceNumber called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PSTORAGE_DEVICE_NUMBER output = nullptr;
+	ULONG_PTR bytesWritten = 0;
+	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(STORAGE_DEVICE_NUMBER)), "Buffer verification failed");
+	output = reinterpret_cast<PSTORAGE_DEVICE_NUMBER>(outputBuffer);
+	bytesWritten = sizeof(STORAGE_DEVICE_NUMBER);
+	output->DeviceType = deviceObject->DeviceType;
+	output->DeviceNumber = DEVICE_EXTENSION_HEADER_MAGIC + virtualStorageExtension->id;
+	output->PartitionNumber = 0;
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchGetMediaTypes(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	// __debugbreak();
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetMediaTypes called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PGET_MEDIA_TYPES output = nullptr;
+	ULONG_PTR bytesWritten = 0;
+	LARGE_INTEGER deviceTracks;
+	LARGE_INTEGER deviceCylinders;
+	const auto virtualStorageExtension = reinterpret_cast<PVirtualStorageDeviceExtension>(deviceObject->DeviceExtension);
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(GET_MEDIA_TYPES)), "Buffer verification failed");
+	output = reinterpret_cast<PGET_MEDIA_TYPES>(outputBuffer);
+	bytesWritten = sizeof(GET_MEDIA_TYPES);
+	output->DeviceType = deviceObject->DeviceType;
+	output->MediaInfoCount = 1;
+	output->MediaInfo->DeviceSpecific.RemovableDiskInfo.MediaType = static_cast<STORAGE_MEDIA_TYPE>(FixedMedia); // Looks like I need to lie to vds.exe
+	output->MediaInfo->DeviceSpecific.RemovableDiskInfo.NumberMediaSides = 1;
+	output->MediaInfo->DeviceSpecific.RemovableDiskInfo.MediaCharacteristics = MEDIA_READ_WRITE | MEDIA_CURRENTLY_MOUNTED;
+	FILL_DISK_PHYSICAL_INFO(output->MediaInfo->DeviceSpecific.RemovableDiskInfo, virtualStorageExtension->file.size);
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchIsDiskClustered(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	UNREFERENCED_PARAMETER(deviceObject);
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchIsDiskClustered called");
+	ULONG bytesWritten = 0;
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(BOOLEAN)), "Buffer verification failed");
+	*reinterpret_cast<BOOLEAN*>(outputBuffer) = FALSE;
+	bytesWritten = sizeof(BOOLEAN);
+cleanup:
+	irp->IoStatus.Status = STATUS_SUCCESS;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+NTSTATUS ioctlDispatchGetDiskAttributes(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	UNREFERENCED_PARAMETER(deviceObject);
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetDiskAttributes called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	PGET_DISK_ATTRIBUTES  output = nullptr;
+	ULONG_PTR bytesWritten = 0;
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, sizeof(GET_DISK_ATTRIBUTES)), "Buffer verification failed");
+	output = reinterpret_cast<PGET_DISK_ATTRIBUTES>(outputBuffer);
+	bytesWritten = sizeof(GET_DISK_ATTRIBUTES);
+	output->Version = sizeof(GET_DISK_ATTRIBUTES);
+	output->Reserved1 = 0;
+	output->Attributes = 0;
+cleanup:
+	irp->IoStatus.Status = status;
+	irp->IoStatus.Information = bytesWritten;
+	return status;
+}
+
+// Obtained from IDA
+#define GET_DISK_FLAGS_SIZE 0x14
+
+NTSTATUS ioctlDispatchGetDiskFlags(PDEVICE_OBJECT deviceObject, PIRP irp, PIO_STACK_LOCATION stackLocation) {
+	UNREFERENCED_PARAMETER(deviceObject);
+	NTSTATUS status = STATUS_SUCCESS;
+	TRACE("ioctlDispatchGetDiskFlags called");
+	const auto outputBuffer = reinterpret_cast<char*>(irp->AssociatedIrp.SystemBuffer);
+	const auto length = stackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	ULONG_PTR bytesWritten = 0;
+	CHECK_STATUS(verifyBufferSize(outputBuffer, length, GET_DISK_FLAGS_SIZE), "Buffer verification failed");
+	bytesWritten = GET_DISK_FLAGS_SIZE;
+	// Looks like the only usage is to check if some flags are true, none of them relevant to us
+	RtlZeroMemory(outputBuffer, GET_DISK_FLAGS_SIZE);
 cleanup:
 	irp->IoStatus.Status = status;
 	irp->IoStatus.Information = bytesWritten;

@@ -2,12 +2,19 @@
 #include <ntdddisk.h>
 #include <mountdev.h>
 #include <ntddvol.h>
+#include <ntddscsi.h>
 #include "VirtualStorageIoctlFunctions.h"
 #include "VirtualStoragePnpFunctions.h"
 #include "UtilFunctions.h"
 
 // Found this definition in some online implementation. ioctl code = 2d5190 from function FsRtlGetVirtualDiskNestingLevel
 #define IOCTL_STORAGE_GET_VIRTUALDISK_NESTING_LEVEL CTL_CODE(IOCTL_STORAGE_BASE, 0x0464, METHOD_BUFFERED, FILE_READ_ACCESS)
+
+// The following ioctl is not defined, found it from windbg + ida. ioctl code = 700f8
+#define IOCTL_DISK_IS_DISK_CLUSTERED CTL_CODE(IOCTL_DISK_BASE, 0x003e, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+// Same as above, ioctl code = 704010
+#define IOCTL_DISK_GET_DISK_FLAGS CTL_CODE(112, 0x0004, METHOD_BUFFERED, FILE_READ_ACCESS)
 
 namespace virtualStorage {
 
@@ -23,6 +30,9 @@ NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 		break;
 	case IOCTL_DISK_GET_DRIVE_GEOMETRY:
 		status = ioctlDispatchGetDriveGeometry(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_DISK_GET_DRIVE_GEOMETRY_EX:
+		status = ioctlDispatchGetDriveGeometryEx(deviceObject, irp, stackLocation);
 		break;
 	case IOCTL_DISK_MEDIA_REMOVAL:
 		status = ioctlDispatchNoHandleReturnSuccess(deviceObject, irp, stackLocation);
@@ -73,11 +83,32 @@ NTSTATUS deviceDispatchIoctl(PDEVICE_OBJECT deviceObject, PIRP irp) {
 	case IOCTL_DISK_GET_PARTITION_INFO_EX:
 		status = ioctlDispatchGetPartitionInfo(deviceObject, irp, stackLocation);
 		break;
-		
+	case IOCTL_DISK_GET_DRIVE_LAYOUT:
+		status = ioctlDispatchGetDriveLayout(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_DISK_GET_DRIVE_LAYOUT_EX:
+		status = ioctlDispatchGetDriveLayoutEx(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+		status = ioctlDispatchGetDeviceNumber(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_STORAGE_GET_MEDIA_TYPES_EX:
+		status = ioctlDispatchGetMediaTypes(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_DISK_IS_DISK_CLUSTERED:
+		status = ioctlDispatchIsDiskClustered(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_DISK_GET_DISK_ATTRIBUTES:
+		status = ioctlDispatchGetDiskAttributes(deviceObject, irp, stackLocation);
+		break;
+	case IOCTL_DISK_GET_DISK_FLAGS:
+		status = ioctlDispatchGetDiskFlags(deviceObject, irp, stackLocation);
+		break;
 	// All of the following codes are known and intentionally not handled
 	case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 	case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
 	case IOCTL_VOLUME_GET_GPT_ATTRIBUTES:
+	case IOCTL_SCSI_GET_ADDRESS:
 	case 0x4d0010: // Couldn't find macro that defines this IOCTL but from its usage in "mountmgr.sys" it doesn't look important
 	case 0x45561088: // Couldn't find macro that defines this IOCTL nor documentation or reference online. Issued from fveapi.dll
 		TRACE("Intentionally unahndeled control code");

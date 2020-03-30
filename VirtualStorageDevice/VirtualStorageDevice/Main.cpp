@@ -29,11 +29,17 @@ void driverCleanup(PDRIVER_OBJECT driverObject) {
 			}
 			virtualStorageExtension->file.handle = nullptr;
 			DELETE_IF_NOT_NULL(virtualStorageExtension->lowerLevelDevice, IoDetachDevice);
-			if (virtualStorageExtension->symbolicLinkName.Buffer) {
-				IoSetDeviceInterfaceState(&virtualStorageExtension->symbolicLinkName, false);
-				TRACE("Deleting PDO symbolic link name");
-				RtlFreeUnicodeString(&virtualStorageExtension->symbolicLinkName);
-				RtlZeroMemory(&virtualStorageExtension->symbolicLinkName, sizeof(UNICODE_STRING));
+			if (virtualStorageExtension->mountSymbolicLinkName.Buffer) {
+				IoSetDeviceInterfaceState(&virtualStorageExtension->mountSymbolicLinkName, false);
+				TRACE("Deleting PDO mount symbolic link name");
+				RtlFreeUnicodeString(&virtualStorageExtension->mountSymbolicLinkName);
+				RtlZeroMemory(&virtualStorageExtension->mountSymbolicLinkName, sizeof(UNICODE_STRING));
+			}
+			if (virtualStorageExtension->diskSymbolicLinkName.Buffer) {
+				IoSetDeviceInterfaceState(&virtualStorageExtension->diskSymbolicLinkName, false);
+				TRACE("Deleting PDO device symbolic link name");
+				RtlFreeUnicodeString(&virtualStorageExtension->diskSymbolicLinkName);
+				RtlZeroMemory(&virtualStorageExtension->diskSymbolicLinkName, sizeof(UNICODE_STRING));
 			}
 			FREE_IF_NOT_NULL(virtualStorageExtension->deviceName.Buffer, 'NveD');
 			TRACE("Deleting PDO");

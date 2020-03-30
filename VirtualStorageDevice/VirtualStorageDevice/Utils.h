@@ -75,6 +75,19 @@
 
 #define DEVICE_UNIQUE_ID(deviceId) _DEVICE_UNIQUE_ID(LOW_BYTE(deviceId), LOW_SECOND_BYTE(deviceId), HIGH_SECOND_BYTE(deviceId), HIGH_BYTE(deviceId))
 
+#define FILL_DISK_PHYSICAL_INFO(diskPhysicalInfo, diskSize) \
+	deviceTracks.QuadPart = ((diskSize).QuadPart / BYTES_PER_SECTOR) / SECTORS_PER_TRACK; \
+	deviceCylinders.QuadPart = deviceTracks.QuadPart / MAX_TRACK_PER_CYLINDER; \
+	if (!deviceCylinders.QuadPart) { \
+		deviceCylinders.QuadPart = 1; \
+	} \
+	if (!deviceTracks.QuadPart || deviceTracks.QuadPart > MAX_TRACK_PER_CYLINDER) { \
+		deviceTracks.QuadPart = MAX_TRACK_PER_CYLINDER; \
+	} \
+	(diskPhysicalInfo).Cylinders.QuadPart = deviceCylinders.QuadPart; \
+	(diskPhysicalInfo).TracksPerCylinder = deviceTracks.LowPart; \
+	(diskPhysicalInfo).SectorsPerTrack = SECTORS_PER_TRACK; \
+	(diskPhysicalInfo).BytesPerSector = BYTES_PER_SECTOR; \
 
 enum class DeviceType : ULONG {
 	MANAGER = 0,
@@ -104,8 +117,8 @@ typedef struct VirtualStorageDeviceExtension {
 	UNICODE_STRING deviceName;
 	PDEVICE_OBJECT pdoDevice;
 	PDEVICE_OBJECT lowerLevelDevice;
-	UNICODE_STRING symbolicLinkName;
-	
+	UNICODE_STRING mountSymbolicLinkName;
+	UNICODE_STRING diskSymbolicLinkName;
 } *PVirtualStorageDeviceExtension;
 
 extern const GUID g_deviceClassGuid;
